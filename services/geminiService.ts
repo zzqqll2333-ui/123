@@ -1,10 +1,22 @@
-import { GoogleGenAI, Type, Schema } from "@google/genai";
+
+import { GoogleGenAI, Type } from "@google/genai";
 import { NutritionData, DailyReport } from "../types";
 
-// 每次调用时动态创建实例，确保获取最新的 API_KEY
-const getAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
+/**
+ * Creates a new instance of the GoogleGenAI client.
+ * Strictly checks for the presence of the API_KEY in the process environment.
+ * If missing, throws a clear error to be caught by the UI.
+ */
+const getAi = () => {
+  const apiKey = process.env.API_KEY;
+  if (!apiKey || apiKey.trim() === "") {
+    throw new Error("API Key is missing. Please select an API Key via the 'Connect' button.");
+  }
+  return new GoogleGenAI({ apiKey: apiKey.trim() });
+};
 
-const nutritionSchema: Schema = {
+// Nutritional analysis schema following Type definitions
+const nutritionSchema = {
   type: Type.OBJECT,
   properties: {
     calories: { type: Type.NUMBER, description: "Total estimated calories in kcal" },
@@ -22,7 +34,8 @@ const nutritionSchema: Schema = {
   required: ["calories", "protein", "carbs", "fat", "foodItems", "healthScore", "summary"],
 };
 
-const reportSchema: Schema = {
+// Daily report schema following Type definitions
+const reportSchema = {
   type: Type.OBJECT,
   properties: {
     title: { type: Type.STRING, description: "A concise and catchy title for the daily health report in Chinese." },
@@ -32,12 +45,15 @@ const reportSchema: Schema = {
   required: ["title", "shortSummary", "detailedAdvice"],
 };
 
+/**
+ * Analyzes a food image using Gemini 3 Pro for advanced multimodal reasoning.
+ */
 export const analyzeFoodImage = async (base64Image: string): Promise<NutritionData> => {
   try {
     const ai = getAi();
-    // 使用 Pro 级模型以获得最高质量的图像理解和推理
+    // Using gemini-3-pro-preview for complex reasoning tasks like nutrition estimation
     const response = await ai.models.generateContent({
-      model: "gemini-3-pro-image-preview",
+      model: "gemini-3-pro-preview",
       contents: {
         parts: [
           {
@@ -62,13 +78,22 @@ export const analyzeFoodImage = async (base64Image: string): Promise<NutritionDa
     return JSON.parse(resultText) as NutritionData;
   } catch (error: any) {
     console.error("Analysis Error:", error);
+    if (error.message?.includes("API Key is missing")) {
+      throw error;
+    }
+    if (error.message?.toLowerCase().includes("api key") || error.message?.includes("403") || error.message?.includes("401")) {
+      throw new Error("API Key 无效或未启用计费。请确保您使用的是已启用结算的项目。");
+    }
     if (error.message?.includes("entity was not found")) {
-      throw new Error("模型调用失败，请重新选择 API Key。");
+      throw new Error("模型调用失败，请重新选择有效的 API Key。");
     }
     throw new Error(error.message || "分析过程中发生错误");
   }
 };
 
+/**
+ * Generates a daily health report based on total nutrition intake.
+ */
 export const generateDailyReport = async (totals: NutritionData): Promise<DailyReport> => {
   try {
     const ai = getAi();
@@ -98,21 +123,24 @@ export const generateDailyReport = async (totals: NutritionData): Promise<DailyR
   }
 };
 
+/**
+ * Sends a chat message to the nutrition AI assistant.
+ */
 export const sendChatMessage = async (
   history: { role: string; parts: { text: string }[] }[],
   newMessage: string
 ): Promise<string> => {
   try {
     const ai = getAi();
-    const chat = ai.chats.create({
+    // Using generateContent with contents array for history to ensure compatibility
+    const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
+      contents: [...history, { role: 'user', parts: [{ text: newMessage }] }],
       config: {
         systemInstruction: "你是一位专业的中国营养师，擅长通过膳食分析提供健康建议。请始终使用中文，语气专业且亲切。",
       },
-      history: history,
     });
 
-    const response = await chat.sendMessage({ message: newMessage });
     return response.text || "抱歉，无法获取回答。";
   } catch (error: any) {
     return `对话错误: ${error.message}`;

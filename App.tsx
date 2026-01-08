@@ -1,30 +1,41 @@
+
 import React, { useState, useEffect } from 'react';
 import Navbar from './components/Navbar';
 import Analyzer from './components/Analyzer';
 import ChatInterface from './components/ChatInterface';
 import { AppMode } from './types';
-import { Key, Sparkles, ShieldCheck, ExternalLink } from 'lucide-react';
+import { Key, Sparkles, ShieldCheck, ExternalLink, AlertTriangle, Loader2 } from 'lucide-react';
+
+declare global {
+  interface Window {
+    aistudio?: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.ANALYZER);
   const [hasKey, setHasKey] = useState<boolean | null>(null);
 
-  // 检查是否已经选择了 API Key
+  // Check if an API key is available or selected
   useEffect(() => {
     const checkKey = async () => {
-      // 如果环境变量已经有了 Key (Vercel 预设)，则直接进入
-      if (process.env.API_KEY) {
+      // 1. Check if an environment variable exists and is not an empty string
+      const envKey = process.env.API_KEY;
+      if (envKey && envKey.trim().length > 0) {
         setHasKey(true);
         return;
       }
       
-      // 否则检查 window.aistudio 状态
+      // 2. If no env key, check if we're in the AI Studio environment and have a selector
       if (window.aistudio?.hasSelectedApiKey) {
         const selected = await window.aistudio.hasSelectedApiKey();
         setHasKey(selected);
       } else {
-        // 如果不在特殊环境下，假设已有（或由环境变量提供）
-        setHasKey(true);
+        // 3. Fallback: If not in AI Studio and no env key, assume we need to prompt or fail
+        setHasKey(false);
       }
     };
     checkKey();
@@ -32,17 +43,24 @@ const App: React.FC = () => {
 
   const handleOpenKeySelector = async () => {
     if (window.aistudio?.openSelectKey) {
-      await window.aistudio.openSelectKey();
-      // 触发选择后直接进入，避免竞态条件
-      setHasKey(true);
+      try {
+        await window.aistudio.openSelectKey();
+        // Immediately assume key is available to update UI after selection
+        setHasKey(true);
+      } catch (err) {
+        console.error("Key selection failed", err);
+      }
+    } else {
+      alert("当前环境不支持自动 Key 选择。请在部署平台配置 API_KEY 环境变量。");
     }
   };
 
+  // Unconfigured state: Show onboarding / connection UI
   if (hasKey === false) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center space-y-6">
-          <div className="inline-flex p-4 bg-emerald-100 rounded-full text-emerald-600 animate-float">
+        <div className="max-w-md w-full bg-white rounded-3xl shadow-xl border border-gray-100 p-8 text-center space-y-6 animate-fade-in">
+          <div className="inline-flex p-4 bg-emerald-100 rounded-full text-emerald-600">
             <ShieldCheck className="h-10 w-10" />
           </div>
           
@@ -60,38 +78,43 @@ const App: React.FC = () => {
             </div>
             <div className="flex items-start gap-3 text-xs text-gray-600">
               <Key className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-              <p>请选择一个已启用计费（Paid Project）的 API Key 以确保服务稳定。</p>
+              <p>当前缺少有效的 API Key 访问权限。</p>
             </div>
+            {!window.aistudio && (
+              <div className="flex items-start gap-3 text-xs text-amber-600 bg-amber-50 p-3 rounded-lg border border-amber-100">
+                <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                <p><strong>注意：</strong>请在您的项目设置中添加 <code>API_KEY</code> 环境变量。</p>
+              </div>
+            )}
           </div>
 
-          <button
-            onClick={handleOpenKeySelector}
-            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-4 px-6 rounded-2xl transition-all shadow-lg hover:shadow-emerald-200 flex items-center justify-center gap-2"
-          >
-            <Key className="h-5 w-5" />
-            连接 API Key
-          </button>
-
-          <a 
-            href="https://ai.google.dev/gemini-api/docs/billing" 
-            target="_blank" 
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1 text-xs text-gray-400 hover:text-emerald-600 transition-colors"
-          >
-            查看计费说明文档 <ExternalLink className="h-3 w-3" />
-          </a>
+          {window.aistudio && (
+            <button
+              onClick={handleOpenKeySelector}
+              className="w-full flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white py-4 rounded-2xl font-bold transition-all shadow-lg active:scale-95"
+            >
+              <ExternalLink className="h-5 w-5" />
+              连接 Google Gemini 服务
+            </button>
+          )}
+          
+          <div className="pt-2 text-[10px] text-gray-400">
+            连接后，您的 API Key 将用于调用 Gemini 接口。
+            <br />
+            了解更多：<a href="https://ai.google.dev/gemini-api/docs/billing" target="_blank" rel="noreferrer" className="underline">计费文档</a>
+          </div>
         </div>
       </div>
     );
   }
 
-  // 加载状态显示
+  // Loading state
   if (hasKey === null) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin"></div>
-          <p className="text-gray-400 text-sm font-medium">初始化安全连接...</p>
+          <Loader2 className="h-10 w-10 text-emerald-500 animate-spin" />
+          <p className="text-gray-500 font-medium">初始化中...</p>
         </div>
       </div>
     );
@@ -100,19 +123,11 @@ const App: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       <Navbar currentMode={mode} setMode={setMode} />
-      
-      <main className="flex-1 max-w-5xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8">
-        {mode === AppMode.ANALYZER ? (
-          <Analyzer />
-        ) : (
-          <ChatInterface />
-        )}
+      <main className="flex-1 max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 w-full">
+        {mode === AppMode.ANALYZER ? <Analyzer /> : <ChatInterface />}
       </main>
-
-      <footer className="bg-white border-t border-gray-100 py-6 mt-auto">
-        <div className="max-w-5xl mx-auto px-4 text-center text-gray-400 text-sm">
-          <p>© 2024 膳食智囊. Powered by Gemini 3 Pro Vision.</p>
-        </div>
+      <footer className="bg-white border-t border-gray-100 py-6 text-center text-gray-400 text-xs">
+        <p>© 2024 膳食智囊 - 您的个人 AI 营养伴侣</p>
       </footer>
     </div>
   );
