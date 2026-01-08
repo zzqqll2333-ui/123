@@ -1,0 +1,7 @@
+{
+  "name": "每日卡路里摄入计算",
+  "description": "基于 Gemini 3 Pro 的智能膳食分析助手。上传食物照片即可获得卡路里、营养成分分析以及专业的健康饮食建议。支持中文交互。",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
