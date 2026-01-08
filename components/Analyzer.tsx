@@ -1,19 +1,18 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, Loader2, Plus, Trash2, CheckCircle2, Info, ChevronDown, ChevronUp, Sparkles, FileText } from 'lucide-react';
+import { Upload, X, Loader2, Plus, Trash2, CheckCircle2, Info, ChevronDown, ChevronUp, Sparkles, FileText, AlertCircle } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { analyzeFoodImage, generateDailyReport } from '../services/geminiService';
 import { Meal, MealType, NutritionData, DailyReport } from '../types';
 import NutritionChart from './NutritionChart';
 
-// Helper to calculate totals from a list of meals
 const calculateTotals = (meals: Meal[]): NutritionData => {
   return meals.reduce((acc, meal) => ({
     calories: acc.calories + meal.calories,
     protein: acc.protein + meal.protein,
     carbs: acc.carbs + meal.carbs,
     fat: acc.fat + meal.fat,
-    foodItems: [...acc.foodItems, ...meal.foodItems],
-    healthScore: Math.round((acc.healthScore * meals.length + meal.healthScore) / (meals.length + 1)) || 0, // weighted average approach
+    foodItems: Array.from(new Set([...acc.foodItems, ...meal.foodItems])),
+    healthScore: Math.round((acc.healthScore * Math.max(1, meals.length - 1) + meal.healthScore) / meals.length) || 0,
     summary: "今日总览",
   }), {
     calories: 0,
@@ -30,13 +29,10 @@ const Analyzer: React.FC = () => {
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loadingSlot, setLoadingSlot] = useState<MealType | null>(null);
   const [error, setError] = useState<string | null>(null);
-  
-  // Daily Report State
   const [dailyReport, setDailyReport] = useState<DailyReport | null>(null);
   const [reportLoading, setReportLoading] = useState(false);
   const [showReportDetails, setShowReportDetails] = useState(false);
   
-  // We use a single file input and trigger it for specific slots
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeSlotRef = useRef<MealType | null>(null);
 
@@ -52,15 +48,12 @@ const Analyzer: React.FC = () => {
     const slot = activeSlotRef.current;
     setLoadingSlot(slot);
     setError(null);
-    // Reset report when new data is added as it might be outdated
     setDailyReport(null); 
-    setShowReportDetails(false);
 
     try {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64String = reader.result as string;
-        // GoogleGenAI expects the base64 string without the data URI scheme
         const base64Data = base64String.split(',')[1];
 
         try {
@@ -73,35 +66,35 @@ const Analyzer: React.FC = () => {
             timestamp: Date.now(),
           };
           setMeals(prev => [...prev, newMeal]);
-        } catch (err) {
-          console.error(err);
-          setError("分析失败，请重试。");
+        } catch (err: any) {
+          setError(`分析失败: ${err.message || '请检查API Key配置'}`);
         } finally {
           setLoadingSlot(null);
-          if (fileInputRef.current) fileInputRef.current.value = ''; // reset input
+          if (fileInputRef.current) fileInputRef.current.value = '';
         }
       };
       reader.readAsDataURL(file);
-    } catch (e) {
+    } catch (e: any) {
       setLoadingSlot(null);
-      setError("图片处理出错");
+      setError(`图片处理出错: ${e.message}`);
     }
   };
 
   const deleteMeal = (id: string) => {
     setMeals(prev => prev.filter(m => m.id !== id));
-    setDailyReport(null); // Reset report on change
+    setDailyReport(null);
   };
 
   const handleGenerateReport = async () => {
     if (meals.length === 0) return;
     setReportLoading(true);
+    setError(null);
     try {
       const totals = calculateTotals(meals);
       const report = await generateDailyReport(totals);
       setDailyReport(report);
-    } catch (e) {
-      setError("生成建议失败，请重试。");
+    } catch (e: any) {
+      setError(`生成建议失败: ${e.message}`);
     } finally {
       setReportLoading(false);
     }
@@ -132,7 +125,6 @@ const Analyzer: React.FC = () => {
                onClick={() => handleFileSelect(type)}
                disabled={!!loadingSlot}
                className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-full transition-colors disabled:opacity-50 shadow-sm"
-               title="添加食物"
              >
                <Plus className="h-5 w-5" />
              </button>
@@ -143,9 +135,9 @@ const Analyzer: React.FC = () => {
           {slotMeals.length === 0 && !isLoading && (
             <div 
               onClick={() => handleFileSelect(type)}
-              className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-100 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-emerald-200 transition-colors"
+              className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-100 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-emerald-200"
             >
-               点击此处记录{title}
+               点击记录{title}
             </div>
           )}
 
@@ -166,8 +158,7 @@ const Analyzer: React.FC = () => {
               </div>
               <button 
                 onClick={() => deleteMeal(meal.id)}
-                className="absolute top-2 right-2 text-gray-300 hover:text-red-500 p-1 rounded-full transition-colors"
-                title="删除"
+                className="absolute top-2 right-2 text-gray-300 hover:text-red-500 p-1"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -197,7 +188,6 @@ const Analyzer: React.FC = () => {
       
       {/* Total Dashboard */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 relative overflow-hidden">
-        {/* Background Element */}
         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-50 to-blue-50 rounded-bl-full -z-0 opacity-60"></div>
         
         <div className="relative z-10">
@@ -239,9 +229,13 @@ const Analyzer: React.FC = () => {
       </div>
 
       {error && (
-        <div className="bg-red-50 p-4 rounded-xl flex items-center gap-3 text-red-700 border border-red-100 animate-shake">
-          <Trash2 className="h-5 w-5" />
-          <p>{error}</p>
+        <div className="bg-red-50 p-4 rounded-xl flex items-start gap-3 text-red-700 border border-red-100 animate-shake">
+          <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-bold">操作失败</p>
+            <p className="mt-1 opacity-90">{error}</p>
+            {!process.env.API_KEY && <p className="mt-2 font-bold underline">提示: 检测到 Vercel 环境变量 API_KEY 未设置。</p>}
+          </div>
         </div>
       )}
 
@@ -316,7 +310,6 @@ const Analyzer: React.FC = () => {
         )}
       </div>
 
-      {/* Hidden File Input */}
       <input 
         type="file" 
         ref={fileInputRef}

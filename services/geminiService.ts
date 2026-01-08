@@ -1,15 +1,14 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { NutritionData, DailyReport } from "../types";
 
-// Lazy initialization of the client to ensure process.env is accessible and prevent startup crashes
+// Lazy initialization of the client to ensure process.env is accessible
 let ai: GoogleGenAI | null = null;
 
 const getAiClient = () => {
   if (!ai) {
-    // API_KEY must be obtained exclusively from process.env.API_KEY
     const apiKey = process.env.API_KEY;
     if (!apiKey) {
-      console.warn("Warning: API_KEY is missing from process.env");
+      console.error("Critical Error: API_KEY is missing from process.env. Please check your Vercel Environment Variables.");
     }
     ai = new GoogleGenAI({ apiKey: apiKey || '' });
   }
@@ -46,48 +45,41 @@ const reportSchema: Schema = {
 
 export const analyzeFoodImage = async (base64Image: string): Promise<NutritionData> => {
   try {
-    // Using gemini-3-pro-preview with thinking budget for deep analysis of the image
     const client = getAiClient();
+    // Using gemini-3-flash-preview for fast multimodal analysis and reliable availability
     const response = await client.models.generateContent({
-      model: "gemini-3-pro-preview",
+      model: "gemini-3-flash-preview",
       contents: {
         parts: [
           {
             inlineData: {
-              mimeType: "image/jpeg", // Assuming JPEG for simplicity, can be dynamic
+              mimeType: "image/jpeg",
               data: base64Image,
             },
           },
           {
-            text: "请分析这张图片中的食物。作为一名专业的营养师，请识别所有食物项，仔细估算份量，并计算总卡路里和主要营养素（蛋白质、碳水化合物、脂肪）。请同时给出一个0到100的健康评分，并提供一段简短的中文评价。通过深思熟虑来确保估算的准确性。",
+            text: "请分析这张图片中的食物。作为一名专业的营养师，请识别所有食物项，仔细估算份量，并计算总卡路里和主要营养素（蛋白质、碳水化合物、脂肪）。请同时给出一个0到100的健康评分，并提供一段简短的中文评价。请确保计算逻辑严密。",
           },
         ],
       },
       config: {
         responseMimeType: "application/json",
         responseSchema: nutritionSchema,
-        thinkingConfig: {
-          thinkingBudget: 32768, // Max budget for deep reasoning on visual inputs
-        },
       },
     });
 
     const resultText = response.text;
-    if (!resultText) {
-      throw new Error("No response from AI");
-    }
-
-    // Parse JSON
-    const data = JSON.parse(resultText) as NutritionData;
-    return data;
-  } catch (error) {
-    console.error("Error analyzing food:", error);
-    throw error;
+    if (!resultText) throw new Error("API返回内容为空");
+    return JSON.parse(resultText) as NutritionData;
+  } catch (error: any) {
+    console.error("Food analysis error:", error);
+    throw new Error(error.message || "未知分析错误");
   }
 };
 
 export const generateDailyReport = async (totals: NutritionData): Promise<DailyReport> => {
   try {
+    const client = getAiClient();
     const prompt = `
       基于以下今日摄入总量数据生成一份每日健康简报：
       - 总热量: ${totals.calories} kcal
@@ -97,14 +89,9 @@ export const generateDailyReport = async (totals: NutritionData): Promise<DailyR
       - 摄入食物: ${totals.foodItems.join(', ')}
       - 平均健康分: ${totals.healthScore}
 
-      请提供：
-      1. 一个简短的标题。
-      2. 一句简要的总结 (shortSummary)。
-      3. 详细的建议 (detailedAdvice)，包括营养均衡分析、缺乏的营养素提醒以及对明日饮食的建议。使用Markdown格式。
+      请提供标题、简要总结和Markdown格式的详细建议。
     `;
 
-    // Using gemini-3-flash-preview for fast text generation
-    const client = getAiClient();
     const response = await client.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
@@ -115,14 +102,11 @@ export const generateDailyReport = async (totals: NutritionData): Promise<DailyR
     });
 
     const resultText = response.text;
-    if (!resultText) {
-      throw new Error("No response from AI");
-    }
-
+    if (!resultText) throw new Error("无法生成简报内容");
     return JSON.parse(resultText) as DailyReport;
-  } catch (error) {
-    console.error("Error generating daily report:", error);
-    throw error;
+  } catch (error: any) {
+    console.error("Report generation error:", error);
+    throw new Error(error.message || "无法生成每日简报");
   }
 };
 
@@ -131,23 +115,19 @@ export const sendChatMessage = async (
   newMessage: string
 ): Promise<string> => {
   try {
-    // Using gemini-3-flash-preview for chat responsiveness
     const client = getAiClient();
     const chat = client.chats.create({
       model: "gemini-3-flash-preview",
       config: {
-        systemInstruction: "你是一位经验丰富、友善的中国营养师和健康饮食顾问。你的目标是帮助用户建立健康的饮食习惯。请用中文回答。给出建议时要科学、实用且令人鼓舞。",
+        systemInstruction: "你是一位经验丰富、友善的中国营养师。请用中文提供专业、科学且实用的饮食建议。",
       },
       history: history,
     });
 
-    const response = await chat.sendMessage({
-      message: newMessage,
-    });
-
+    const response = await chat.sendMessage({ message: newMessage });
     return response.text || "抱歉，我暂时无法回答。";
-  } catch (error) {
-    console.error("Error in chat:", error);
-    return "抱歉，发生了一些错误，请稍后再试。";
+  } catch (error: any) {
+    console.error("Chat error:", error);
+    return `对话出错: ${error.message}`;
   }
 };
