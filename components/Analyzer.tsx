@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Upload, X, Loader2, Plus, Trash2, CheckCircle2, Info, ChevronDown, ChevronUp, Sparkles, FileText, AlertCircle } from 'lucide-react';
+import { Upload, X, Loader2, Plus, Trash2, CheckCircle2, Info, ChevronDown, ChevronUp, Sparkles, FileText, AlertCircle, Key } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { analyzeFoodImage, generateDailyReport } from '../services/geminiService';
 import { Meal, MealType, NutritionData, DailyReport } from '../types';
@@ -48,7 +48,6 @@ const Analyzer: React.FC = () => {
     const slot = activeSlotRef.current;
     setLoadingSlot(slot);
     setError(null);
-    setDailyReport(null); 
 
     try {
       const reader = new FileReader();
@@ -67,7 +66,7 @@ const Analyzer: React.FC = () => {
           };
           setMeals(prev => [...prev, newMeal]);
         } catch (err: any) {
-          setError(`分析失败: ${err.message || '请检查API Key配置'}`);
+          setError(err.message || '分析失败');
         } finally {
           setLoadingSlot(null);
           if (fileInputRef.current) fileInputRef.current.value = '';
@@ -76,7 +75,7 @@ const Analyzer: React.FC = () => {
       reader.readAsDataURL(file);
     } catch (e: any) {
       setLoadingSlot(null);
-      setError(`图片处理出错: ${e.message}`);
+      setError(`图片读取错误: ${e.message}`);
     }
   };
 
@@ -100,111 +99,43 @@ const Analyzer: React.FC = () => {
     }
   };
 
-  const totals = calculateTotals(meals);
-
-  const renderMealSection = (type: MealType, title: string, subtitle: string) => {
-    const slotMeals = meals.filter(m => m.type === type);
-    const slotCalories = slotMeals.reduce((acc, m) => acc + m.calories, 0);
-    const isLoading = loadingSlot === type;
-
-    return (
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6 transition-all hover:shadow-md">
-        <div className="p-4 bg-gray-50 border-b border-gray-100 flex justify-between items-center">
-          <div>
-            <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-              {title}
-              {slotMeals.length > 0 && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
-            </h3>
-            <p className="text-xs text-gray-500">{subtitle}</p>
-          </div>
-          <div className="flex items-center gap-4">
-             <div className="text-right">
-                <span className="block font-mono font-bold text-gray-700">{slotCalories} kcal</span>
-             </div>
-             <button 
-               onClick={() => handleFileSelect(type)}
-               disabled={!!loadingSlot}
-               className="bg-emerald-600 hover:bg-emerald-700 text-white p-2 rounded-full transition-colors disabled:opacity-50 shadow-sm"
-             >
-               <Plus className="h-5 w-5" />
-             </button>
-          </div>
-        </div>
-        
-        <div className="p-4 space-y-4">
-          {slotMeals.length === 0 && !isLoading && (
-            <div 
-              onClick={() => handleFileSelect(type)}
-              className="text-center py-8 text-gray-400 text-sm border-2 border-dashed border-gray-100 rounded-xl cursor-pointer hover:bg-gray-50 hover:border-emerald-200"
-            >
-               点击记录{title}
-            </div>
-          )}
-
-          {slotMeals.map(meal => (
-            <div key={meal.id} className="flex gap-4 items-start bg-white p-3 rounded-xl border border-gray-100 shadow-sm relative group animate-slide-up">
-              <img src={meal.image} alt="Food" className="w-20 h-20 object-cover rounded-lg bg-gray-100 flex-shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="flex justify-between items-start">
-                   <h4 className="font-medium text-gray-900 truncate pr-6">{meal.foodItems.join(', ')}</h4>
-                   <span className="font-bold text-emerald-600 whitespace-nowrap">{meal.calories} kcal</span>
-                </div>
-                <div className="text-xs text-gray-500 mt-1 flex flex-wrap gap-x-3 gap-y-1">
-                   <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded">蛋白: {meal.protein}g</span>
-                   <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded">碳水: {meal.carbs}g</span>
-                   <span className="bg-amber-50 text-amber-700 px-1.5 py-0.5 rounded">脂肪: {meal.fat}g</span>
-                </div>
-                <p className="text-xs text-gray-400 mt-2 line-clamp-2">{meal.summary}</p>
-              </div>
-              <button 
-                onClick={() => deleteMeal(meal.id)}
-                className="absolute top-2 right-2 text-gray-300 hover:text-red-500 p-1"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ))}
-
-          {isLoading && (
-            <div className="flex items-center gap-4 p-4 bg-emerald-50/50 rounded-xl border border-emerald-100 animate-pulse">
-               <div className="w-20 h-20 bg-emerald-100 rounded-lg"></div>
-               <div className="flex-1 space-y-2">
-                 <div className="h-4 bg-emerald-100 rounded w-3/4"></div>
-                 <div className="h-3 bg-emerald-100 rounded w-1/2"></div>
-               </div>
-               <div className="flex flex-col items-center gap-1 text-emerald-600">
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  <span className="text-xs font-medium">分析中</span>
-               </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  const handleResetKey = async () => {
+    if (window.aistudio?.openSelectKey) {
+      await window.aistudio.openSelectKey();
+      window.location.reload();
+    }
   };
+
+  const totals = calculateTotals(meals);
 
   return (
     <div className="animate-fade-in max-w-4xl mx-auto pb-20 space-y-8">
-      
-      {/* Total Dashboard */}
+      {/* 顶部面板 */}
       <div className="bg-white rounded-3xl shadow-sm border border-gray-100 p-6 relative overflow-hidden">
         <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-emerald-50 to-blue-50 rounded-bl-full -z-0 opacity-60"></div>
-        
         <div className="relative z-10">
-          <div className="flex items-center gap-2 mb-6">
-            <Info className="h-5 w-5 text-emerald-600" />
-            <h2 className="font-bold text-gray-800">今日膳食概览</h2>
+          <div className="flex justify-between items-center mb-6">
+            <div className="flex items-center gap-2 text-emerald-600">
+              <Info className="h-5 w-5" />
+              <h2 className="font-bold text-gray-800">今日膳食概览</h2>
+            </div>
+            <button 
+              onClick={handleResetKey}
+              className="text-xs text-gray-400 hover:text-emerald-600 flex items-center gap-1 transition-colors"
+            >
+              <Key className="h-3 w-3" /> 重设 API Key
+            </button>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 items-center">
              <div className="text-center md:text-left">
-               <div className="text-sm text-gray-500 font-medium tracking-wide uppercase mb-1">总热量摄入</div>
+               <div className="text-sm text-gray-500 font-medium mb-1">总热量摄入</div>
                <div className="flex items-baseline justify-center md:justify-start">
                  <span className="text-5xl font-extrabold text-gray-900 tracking-tight">{totals.calories}</span>
                  <span className="text-lg text-gray-400 ml-1 font-medium">kcal</span>
                </div>
                <p className="text-sm text-gray-400 mt-2">
-                 {meals.length > 0 ? `已记录 ${meals.length} 次用餐` : '今天还没有记录哦'}
+                 {meals.length > 0 ? `已记录 ${meals.length} 次用餐` : '快去拍照记录第一顿饭吧'}
                </p>
              </div>
              
@@ -214,7 +145,7 @@ const Analyzer: React.FC = () => {
                      <NutritionChart data={totals} />
                    ) : (
                      <div className="absolute inset-0 rounded-full border-4 border-gray-200 border-dashed flex items-center justify-center text-xs text-gray-400">
-                       无数据
+                       等待数据
                      </div>
                    )}
                 </div>
@@ -229,111 +160,160 @@ const Analyzer: React.FC = () => {
       </div>
 
       {error && (
-        <div className="bg-red-50 p-4 rounded-xl flex items-start gap-3 text-red-700 border border-red-100 animate-shake">
+        <div className="bg-red-50 p-4 rounded-2xl flex items-start gap-3 text-red-700 border border-red-100 animate-shake">
           <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0" />
-          <div className="text-sm">
+          <div className="text-sm flex-1">
             <p className="font-bold">操作失败</p>
             <p className="mt-1 opacity-90">{error}</p>
-            {!process.env.API_KEY && <p className="mt-2 font-bold underline">提示: 检测到 Vercel 环境变量 API_KEY 未设置。</p>}
+            {error.includes("Key") && (
+              <button onClick={handleResetKey} className="mt-2 text-emerald-700 font-bold underline">
+                点此重新选择有效的 API Key
+              </button>
+            )}
           </div>
         </div>
       )}
 
-      {/* Meal Sections */}
+      {/* 用餐部分 */}
       <div>
-        {renderMealSection(MealType.MORNING, "早餐", "一日之计在于晨")}
-        {renderMealSection(MealType.NOON, "午餐", "补充能量，继续奋斗")}
-        {renderMealSection(MealType.EVENING, "晚餐", "轻松享用，健康收尾")}
+        <MealSection slot={MealType.MORNING} title="早餐" subtitle="开启元气满满的一天" meals={meals} onAdd={handleFileSelect} onDelete={deleteMeal} loading={loadingSlot === MealType.MORNING} />
+        <MealSection slot={MealType.NOON} title="午餐" subtitle="补充能量，继续奋斗" meals={meals} onAdd={handleFileSelect} onDelete={deleteMeal} loading={loadingSlot === MealType.NOON} />
+        <MealSection slot={MealType.EVENING} title="晚餐" subtitle="轻松享受，健康收尾" meals={meals} onAdd={handleFileSelect} onDelete={deleteMeal} loading={loadingSlot === MealType.EVENING} />
       </div>
 
-      {/* Daily Health Advice Section */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-2xl shadow-sm border border-blue-100 overflow-hidden">
-        <div className="p-5 flex justify-between items-center">
+      {/* 建议面板 */}
+      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-3xl shadow-sm border border-blue-100 overflow-hidden">
+        <div className="p-6 flex justify-between items-center">
           <div className="flex items-center gap-3">
-             <div className="bg-white p-2 rounded-lg shadow-sm text-blue-600">
+             <div className="bg-white p-3 rounded-2xl shadow-sm text-blue-600">
                <FileText className="h-6 w-6" />
              </div>
              <div>
-               <h3 className="font-bold text-gray-900 text-lg">今日健康建议</h3>
-               <p className="text-sm text-gray-500">基于您今日摄入的 {meals.length} 餐数据分析</p>
+               <h3 className="font-bold text-gray-900 text-lg">AI 深度健康分析</h3>
+               <p className="text-sm text-gray-500">基于今日 {meals.length} 顿膳食生成</p>
              </div>
           </div>
           
           {meals.length > 0 && !dailyReport && !reportLoading && (
             <button 
               onClick={handleGenerateReport}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl transition-colors shadow-sm font-medium"
+              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-2xl transition-all shadow-md font-bold"
             >
               <Sparkles className="h-4 w-4" />
-              生成建议
+              智能生成建议
             </button>
           )}
 
           {reportLoading && (
-             <div className="flex items-center gap-2 text-blue-600 bg-white/50 px-4 py-2 rounded-xl">
+             <div className="flex items-center gap-2 text-blue-600 bg-white/50 px-5 py-2.5 rounded-2xl">
                <Loader2 className="h-4 w-4 animate-spin" />
-               <span className="text-sm font-medium">生成中...</span>
+               <span className="text-sm font-bold">思考中...</span>
              </div>
           )}
         </div>
 
         {dailyReport && (
           <div className="px-6 pb-6 animate-slide-up">
-            <div className="bg-white rounded-xl p-6 shadow-sm border border-blue-50">
+            <div className="bg-white rounded-2xl p-6 shadow-sm border border-blue-50">
               <h4 className="text-xl font-bold text-gray-800 mb-2">{dailyReport.title}</h4>
               <p className="text-gray-600 leading-relaxed mb-4">{dailyReport.shortSummary}</p>
               
               {showReportDetails && (
-                <div className="mt-6 pt-6 border-t border-gray-100 prose prose-sm max-w-none prose-blue animate-fade-in">
+                <div className="mt-6 pt-6 border-t border-gray-100 prose prose-sm max-w-none prose-blue animate-fade-in text-gray-700">
                   <ReactMarkdown>{dailyReport.detailedAdvice}</ReactMarkdown>
                 </div>
               )}
 
               <button 
                 onClick={() => setShowReportDetails(!showReportDetails)}
-                className="mt-2 flex items-center gap-1 text-sm font-semibold text-blue-600 hover:text-blue-700 transition-colors"
+                className="mt-2 flex items-center gap-1 text-sm font-bold text-blue-600 hover:text-blue-700 transition-colors"
               >
-                {showReportDetails ? (
-                  <>收起详情 <ChevronUp className="h-4 w-4" /></>
-                ) : (
-                  <>查看详情 <ChevronDown className="h-4 w-4" /></>
-                )}
+                {showReportDetails ? <>收起详细分析 <ChevronUp className="h-4 w-4" /></> : <>查看详细营养建议 <ChevronDown className="h-4 w-4" /></>}
               </button>
             </div>
           </div>
         )}
-
-        {meals.length === 0 && (
-           <div className="px-6 pb-6 text-center text-gray-400 text-sm">
-             请先记录今日饮食，AI 将为您生成专属健康建议。
-           </div>
-        )}
       </div>
 
-      <input 
-        type="file" 
-        ref={fileInputRef}
-        className="hidden"
-        accept="image/*"
-        onChange={onFileChange}
-      />
+      <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={onFileChange} />
     </div>
   );
 };
 
-const MacroRow = ({ label, value, color, total }: { label: string, value: number, color: string, total: number }) => {
+// 抽取子组件
+const MealSection = ({ slot, title, subtitle, meals, onAdd, onDelete, loading }: any) => {
+  const slotMeals = meals.filter((m: any) => m.type === slot);
+  const totalCal = slotMeals.reduce((acc: number, m: any) => acc + m.calories, 0);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden mb-6">
+      <div className="p-4 bg-gray-50/50 border-b border-gray-100 flex justify-between items-center">
+        <div>
+          <h3 className="font-bold text-gray-800 flex items-center gap-2">
+            {title} {slotMeals.length > 0 && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+          </h3>
+          <p className="text-[10px] text-gray-400 font-medium">{subtitle}</p>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-bold text-gray-600">{totalCal} kcal</span>
+          <button onClick={() => onAdd(slot)} disabled={loading} className="bg-emerald-600 text-white p-2 rounded-full hover:bg-emerald-700 transition-colors shadow-sm">
+            <Plus className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+      <div className="p-4 space-y-3">
+        {slotMeals.length === 0 && !loading && (
+          <div onClick={() => onAdd(slot)} className="text-center py-6 text-xs text-gray-400 border-2 border-dashed border-gray-100 rounded-2xl cursor-pointer hover:bg-gray-50 transition-colors">
+             添加食物记录
+          </div>
+        )}
+        {slotMeals.map((meal: any) => (
+          <div key={meal.id} className="flex gap-4 p-3 bg-white rounded-2xl border border-gray-50 shadow-sm relative group animate-slide-up">
+            <img src={meal.image} className="w-16 h-16 object-cover rounded-xl bg-gray-50" />
+            <div className="flex-1 min-w-0">
+               <div className="flex justify-between">
+                 <h4 className="font-bold text-gray-800 text-sm truncate pr-4">{meal.foodItems.join(', ')}</h4>
+                 <span className="text-xs font-bold text-emerald-600">{meal.calories} kcal</span>
+               </div>
+               <div className="flex gap-2 mt-1">
+                 <span className="text-[10px] bg-blue-50 text-blue-600 px-1.5 py-0.5 rounded-md font-bold">P: {meal.protein}g</span>
+                 <span className="text-[10px] bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded-md font-bold">C: {meal.carbs}g</span>
+                 <span className="text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded-md font-bold">F: {meal.fat}g</span>
+               </div>
+            </div>
+            <button onClick={() => onDelete(meal.id)} className="absolute top-2 right-2 p-1 text-gray-300 hover:text-red-500 transition-colors">
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+        ))}
+        {loading && (
+          <div className="flex items-center gap-4 p-4 bg-emerald-50/30 rounded-2xl border border-emerald-100 animate-pulse">
+            <div className="w-16 h-16 bg-emerald-100/50 rounded-xl" />
+            <div className="flex-1 space-y-2">
+              <div className="h-3 bg-emerald-100/50 rounded w-1/2" />
+              <div className="h-2 bg-emerald-100/50 rounded w-1/4" />
+            </div>
+            <Loader2 className="h-4 w-4 text-emerald-600 animate-spin" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+const MacroRow = ({ label, value, color, total }: any) => {
   const percent = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div className="flex items-center justify-between group">
       <div className="flex items-center gap-3">
         <div className={`w-2.5 h-2.5 rounded-full ${color} ring-2 ring-white shadow-sm`}></div>
-        <span className="text-sm text-gray-600 font-medium">{label}</span>
+        <span className="text-sm text-gray-600 font-bold">{label}</span>
       </div>
       <div className="flex items-center gap-3">
-         <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden hidden sm:block">
+         <div className="w-20 h-1.5 bg-gray-200 rounded-full overflow-hidden hidden sm:block">
             <div className={`h-full ${color}`} style={{ width: `${percent}%` }}></div>
          </div>
-         <span className="font-bold text-gray-900 w-12 text-right">{value}g</span>
+         <span className="font-bold text-gray-900 w-10 text-right text-xs">{value}g</span>
       </div>
     </div>
   );

@@ -5,23 +5,26 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>膳食智囊 - AI 营养分析师</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-      // Polyfill process for browser environment to prevent 'process is not defined' error
-      window.process = window.process || { env: {} };
-    </script>
     <style>
       @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;700&display=swap');
       body {
         font-family: 'Noto Sans SC', sans-serif;
         background-color: #f3f4f6;
       }
-      /* Custom scrollbar for chat */
       .scrollbar-hide::-webkit-scrollbar {
           display: none;
       }
       .scrollbar-hide {
           -ms-overflow-style: none;
           scrollbar-width: none;
+      }
+      @keyframes float {
+        0% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+        100% { transform: translateY(0px); }
+      }
+      .animate-float {
+        animation: float 3s ease-in-out infinite;
       }
     </style>
   <script type="importmap">

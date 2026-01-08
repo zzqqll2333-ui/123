@@ -1,19 +1,8 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { NutritionData, DailyReport } from "../types";
 
-// Lazy initialization of the client to ensure process.env is accessible
-let ai: GoogleGenAI | null = null;
-
-const getAiClient = () => {
-  if (!ai) {
-    const apiKey = process.env.API_KEY;
-    if (!apiKey) {
-      console.error("Critical Error: API_KEY is missing from process.env. Please check your Vercel Environment Variables.");
-    }
-    ai = new GoogleGenAI({ apiKey: apiKey || '' });
-  }
-  return ai;
-};
+// 每次调用时动态创建实例，确保获取最新的 API_KEY
+const getAi = () => new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const nutritionSchema: Schema = {
   type: Type.OBJECT,
@@ -45,10 +34,10 @@ const reportSchema: Schema = {
 
 export const analyzeFoodImage = async (base64Image: string): Promise<NutritionData> => {
   try {
-    const client = getAiClient();
-    // Using gemini-3-flash-preview for fast multimodal analysis and reliable availability
-    const response = await client.models.generateContent({
-      model: "gemini-3-flash-preview",
+    const ai = getAi();
+    // 使用 Pro 级模型以获得最高质量的图像理解和推理
+    const response = await ai.models.generateContent({
+      model: "gemini-3-pro-image-preview",
       contents: {
         parts: [
           {
@@ -58,7 +47,7 @@ export const analyzeFoodImage = async (base64Image: string): Promise<NutritionDa
             },
           },
           {
-            text: "请分析这张图片中的食物。作为一名专业的营养师，请识别所有食物项，仔细估算份量，并计算总卡路里和主要营养素（蛋白质、碳水化合物、脂肪）。请同时给出一个0到100的健康评分，并提供一段简短的中文评价。请确保计算逻辑严密。",
+            text: "请作为专业的营养师分析这张食物照片。识别所有食材，估算每种食材的分量，并据此精确计算卡路里、蛋白质、碳水和脂肪。给出一个0-100的健康分，并提供中文评价。请确保计算逻辑严密且符合实际饮食常识。",
           },
         ],
       },
@@ -69,30 +58,30 @@ export const analyzeFoodImage = async (base64Image: string): Promise<NutritionDa
     });
 
     const resultText = response.text;
-    if (!resultText) throw new Error("API返回内容为空");
+    if (!resultText) throw new Error("AI 未返回任何分析数据");
     return JSON.parse(resultText) as NutritionData;
   } catch (error: any) {
-    console.error("Food analysis error:", error);
-    throw new Error(error.message || "未知分析错误");
+    console.error("Analysis Error:", error);
+    if (error.message?.includes("entity was not found")) {
+      throw new Error("模型调用失败，请重新选择 API Key。");
+    }
+    throw new Error(error.message || "分析过程中发生错误");
   }
 };
 
 export const generateDailyReport = async (totals: NutritionData): Promise<DailyReport> => {
   try {
-    const client = getAiClient();
+    const ai = getAi();
     const prompt = `
-      基于以下今日摄入总量数据生成一份每日健康简报：
+      基于今日摄入总量生成健康报告：
       - 总热量: ${totals.calories} kcal
-      - 蛋白质: ${totals.protein}g
-      - 碳水化合物: ${totals.carbs}g
-      - 脂肪: ${totals.fat}g
-      - 摄入食物: ${totals.foodItems.join(', ')}
-      - 平均健康分: ${totals.healthScore}
-
-      请提供标题、简要总结和Markdown格式的详细建议。
+      - 蛋白质: ${totals.protein}g, 碳水: ${totals.carbs}g, 脂肪: ${totals.fat}g
+      - 食物清单: ${totals.foodItems.join(', ')}
+      - 平均得分: ${totals.healthScore}
+      请生成一个中文标题、简要总结以及 Markdown 格式的详细改善建议。
     `;
 
-    const response = await client.models.generateContent({
+    const response = await ai.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
@@ -102,11 +91,10 @@ export const generateDailyReport = async (totals: NutritionData): Promise<DailyR
     });
 
     const resultText = response.text;
-    if (!resultText) throw new Error("无法生成简报内容");
+    if (!resultText) throw new Error("无法生成报告");
     return JSON.parse(resultText) as DailyReport;
   } catch (error: any) {
-    console.error("Report generation error:", error);
-    throw new Error(error.message || "无法生成每日简报");
+    throw new Error(error.message || "简报生成失败");
   }
 };
 
@@ -115,19 +103,18 @@ export const sendChatMessage = async (
   newMessage: string
 ): Promise<string> => {
   try {
-    const client = getAiClient();
-    const chat = client.chats.create({
+    const ai = getAi();
+    const chat = ai.chats.create({
       model: "gemini-3-flash-preview",
       config: {
-        systemInstruction: "你是一位经验丰富、友善的中国营养师。请用中文提供专业、科学且实用的饮食建议。",
+        systemInstruction: "你是一位专业的中国营养师，擅长通过膳食分析提供健康建议。请始终使用中文，语气专业且亲切。",
       },
       history: history,
     });
 
     const response = await chat.sendMessage({ message: newMessage });
-    return response.text || "抱歉，我暂时无法回答。";
+    return response.text || "抱歉，无法获取回答。";
   } catch (error: any) {
-    console.error("Chat error:", error);
-    return `对话出错: ${error.message}`;
+    return `对话错误: ${error.message}`;
   }
 };
