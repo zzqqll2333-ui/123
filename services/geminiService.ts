@@ -1,8 +1,20 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { NutritionData, DailyReport } from "../types";
 
-// Initialize the client. API_KEY is injected by the environment.
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Lazy initialization of the client to ensure process.env is accessible and prevent startup crashes
+let ai: GoogleGenAI | null = null;
+
+const getAiClient = () => {
+  if (!ai) {
+    // API_KEY must be obtained exclusively from process.env.API_KEY
+    const apiKey = process.env.API_KEY;
+    if (!apiKey) {
+      console.warn("Warning: API_KEY is missing from process.env");
+    }
+    ai = new GoogleGenAI({ apiKey: apiKey || '' });
+  }
+  return ai;
+};
 
 const nutritionSchema: Schema = {
   type: Type.OBJECT,
@@ -35,7 +47,8 @@ const reportSchema: Schema = {
 export const analyzeFoodImage = async (base64Image: string): Promise<NutritionData> => {
   try {
     // Using gemini-3-pro-preview with thinking budget for deep analysis of the image
-    const response = await ai.models.generateContent({
+    const client = getAiClient();
+    const response = await client.models.generateContent({
       model: "gemini-3-pro-preview",
       contents: {
         parts: [
@@ -91,7 +104,8 @@ export const generateDailyReport = async (totals: NutritionData): Promise<DailyR
     `;
 
     // Using gemini-3-flash-preview for fast text generation
-    const response = await ai.models.generateContent({
+    const client = getAiClient();
+    const response = await client.models.generateContent({
       model: "gemini-3-flash-preview",
       contents: prompt,
       config: {
@@ -117,14 +131,9 @@ export const sendChatMessage = async (
   newMessage: string
 ): Promise<string> => {
   try {
-    // Using gemini-3-flash-preview for chat responsiveness, or pro if we want it to be very smart.
-    // The prompt requested Gemini 3 Pro for complex tasks. 
-    // Let's use Flash for the chat interface to keep it snappy unless specific complex reasoning is needed,
-    // but the system instruction can guide it.
-    
-    // Actually, let's stick to a robust model for advice.
-    // We will use gemini-3-flash-preview for the chat to ensure low latency user experience.
-    const chat = ai.chats.create({
+    // Using gemini-3-flash-preview for chat responsiveness
+    const client = getAiClient();
+    const chat = client.chats.create({
       model: "gemini-3-flash-preview",
       config: {
         systemInstruction: "你是一位经验丰富、友善的中国营养师和健康饮食顾问。你的目标是帮助用户建立健康的饮食习惯。请用中文回答。给出建议时要科学、实用且令人鼓舞。",
